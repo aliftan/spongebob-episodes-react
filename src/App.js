@@ -1,15 +1,13 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Box, Flex, Text, VStack, HStack, Button } from '@chakra-ui/react';
+import { Box, Flex, Text, VStack } from '@chakra-ui/react';
+import { FixedSizeList as List } from 'react-window';
+import AutoSizer from 'react-virtualized-auto-sizer';
 import EpisodeCard from './components/EpisodeCard';
 import FilterBar from './components/FilterBar';
 import episodesData from './data/spongebob_episodes.json';
 
-const ITEMS_PER_PAGE = 20;
-
 export default function App() {
-  const [episodes, setEpisodes] = useState([]);
   const [filteredEpisodes, setFilteredEpisodes] = useState([]);
-  const [visibleEpisodes, setVisibleEpisodes] = useState([]);
   const [filters, setFilters] = useState({
     title: '',
     seasons: [],
@@ -18,17 +16,20 @@ export default function App() {
     copyrightYear: [],
     characters: []
   });
-  const [currentPage, setCurrentPage] = useState(1);
   const [renderTime, setRenderTime] = useState(0);
   const startTimeRef = useRef(0);
 
-  const [writerOptions, animationOptions, copyrightYearOptions, characterOptions] = useMemo(() => {
+  const { writerOptions, animationOptions, copyrightYearOptions, characterOptions, seasonCounts } = useMemo(() => {
     const writers = new Set();
     const animations = new Set();
     const copyrightYears = new Set();
     const characters = new Set();
+    const seasons = {};
 
     episodesData.forEach(episode => {
+      const season = episode.info['Season №'];
+      seasons[season] = (seasons[season] || 0) + 1;
+
       if (episode.info['Writer(s)']) {
         (Array.isArray(episode.info['Writer(s)']) ? episode.info['Writer(s)'] : [episode.info['Writer(s)']]).forEach(writer => writers.add(writer));
       }
@@ -43,25 +44,25 @@ export default function App() {
       }
     });
 
-    return [
-      Array.from(writers).sort(),
-      Array.from(animations).sort(),
-      Array.from(copyrightYears).sort(),
-      Array.from(characters).sort()
-    ];
+    return {
+      writerOptions: Array.from(writers).sort(),
+      animationOptions: Array.from(animations).sort(),
+      copyrightYearOptions: Array.from(copyrightYears).sort(),
+      characterOptions: Array.from(characters).sort(),
+      seasonCounts: seasons
+    };
   }, []);
 
-  const applyFilters = useCallback((data) => {
-    let result = data;
+  const applyFilters = useCallback(() => {
+    startTimeRef.current = performance.now();
+    let result = episodesData;
+
     if (filters.title) {
-      result = result.filter(episode =>
-        episode.title.toLowerCase().includes(filters.title.toLowerCase())
-      );
+      const lowercaseTitle = filters.title.toLowerCase();
+      result = result.filter(episode => episode.title.toLowerCase().includes(lowercaseTitle));
     }
     if (filters.seasons.length > 0) {
-      result = result.filter(episode =>
-        filters.seasons.includes(episode.info['Season №'])
-      );
+      result = result.filter(episode => filters.seasons.includes(episode.info['Season №']));
     }
     if (filters.writers.length > 0) {
       result = result.filter(episode =>
@@ -92,43 +93,25 @@ export default function App() {
         filters.characters.every(character => episode.characters.includes(character))
       );
     }
+
     setFilteredEpisodes(result);
-    setCurrentPage(1);
+    const endTime = performance.now();
+    setRenderTime((endTime - startTimeRef.current).toFixed(2));
   }, [filters]);
 
   useEffect(() => {
-    startTimeRef.current = performance.now();
-    setEpisodes(episodesData);
-    applyFilters(episodesData);
+    applyFilters();
   }, [applyFilters]);
 
-  useEffect(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    const endIndex = startIndex + ITEMS_PER_PAGE;
-    setVisibleEpisodes(filteredEpisodes.slice(startIndex, endIndex));
-    const endTime = performance.now();
-    setRenderTime((endTime - startTimeRef.current).toFixed(2));
-  }, [filteredEpisodes, currentPage]);
-
-  const handleFilterChange = (newFilters) => {
+  const handleFilterChange = useCallback((newFilters) => {
     setFilters(newFilters);
-    applyFilters(episodes);
-  };
-
-  const seasonCounts = useMemo(() => {
-    const counts = {};
-    episodesData.forEach(episode => {
-      const season = episode.info['Season №'];
-      counts[season] = (counts[season] || 0) + 1;
-    });
-    return counts;
   }, []);
 
-  const totalPages = Math.ceil(filteredEpisodes.length / ITEMS_PER_PAGE);
-
-  const handlePageChange = (newPage) => {
-    setCurrentPage(newPage);
-  };
+  const Row = useCallback(({ index, style }) => (
+    <div style={style}>
+      <EpisodeCard episode={filteredEpisodes[index]} />
+    </div>
+  ), [filteredEpisodes]);
 
   return (
     <Flex h="100vh" p={4}>
@@ -143,31 +126,27 @@ export default function App() {
           characterOptions={characterOptions}
         />
       </Box>
-      <VStack flex={1} align="stretch" overflowY="auto" spacing={4}>
-        <Flex justify="space-between" align="center" position="sticky" top={0} bg="white" zIndex={1} py={2}>
+      <VStack flex={1} align="stretch" spacing={4}>
+        <Flex justify="space-between" align="center" bg="white" zIndex={1} py={2}>
           <Text fontSize="2xl" fontWeight="bold">
             SpongeBob Episodes ({filteredEpisodes.length})
           </Text>
           <Text>Load time: {renderTime} ms</Text>
         </Flex>
-        {visibleEpisodes.map((episode, index) => (
-          <EpisodeCard key={index} episode={episode} />
-        ))}
-        <HStack justify="center" mt={4}>
-          <Button
-            onClick={() => handlePageChange(currentPage - 1)}
-            isDisabled={currentPage === 1}
-          >
-            Previous
-          </Button>
-          <Text>Page {currentPage} of {totalPages}</Text>
-          <Button
-            onClick={() => handlePageChange(currentPage + 1)}
-            isDisabled={currentPage === totalPages}
-          >
-            Next
-          </Button>
-        </HStack>
+        <Box flex={1}>
+          <AutoSizer>
+            {({ height, width }) => (
+              <List
+                height={height}
+                itemCount={filteredEpisodes.length}
+                itemSize={370}
+                width={width}
+              >
+                {Row}
+              </List>
+            )}
+          </AutoSizer>
+        </Box>
       </VStack>
     </Flex>
   );

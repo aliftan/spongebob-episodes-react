@@ -22,7 +22,7 @@ function EpisodeCard({ episode }) {
     } = episode;
 
     return (
-        <Box borderWidth="1px" borderRadius="lg" p={4} shadow="md" bg="white" mb={6}>
+        <Box borderWidth="1px" borderRadius="lg" p={4} shadow="md" bg="white">
             <VStack align="stretch" spacing={3}>
                 <Heading as="h3" size="md">{title || 'Unknown Title'}</Heading>
 
