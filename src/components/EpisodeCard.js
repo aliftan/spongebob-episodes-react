@@ -1,8 +1,12 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Box, Heading, Text, VStack, HStack, Tag, Wrap, WrapItem, Link } from '@chakra-ui/react';
 import { ExternalLinkIcon } from '@chakra-ui/icons';
 
-function EpisodeCard({ episode }) {
+function EpisodeCard({ episode, onLoad }) {
+    useEffect(() => {
+        if (onLoad) onLoad();
+    }, [onLoad]);
+
     if (!episode || !episode.info) {
         return <Box>Episode information not available</Box>;
     }
